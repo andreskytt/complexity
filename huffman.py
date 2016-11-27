@@ -2,6 +2,7 @@ import os
 import marshal
 import array
 
+# Not my making, found here: http://code.activestate.com/recipes/576603-huffman-coding-encoderdeconder/
 class HuffmanNode(object):
     recurPrint = False
     def __init__(self, ch=None, fq=None, lnode=None, rnode=None, parent=None):
