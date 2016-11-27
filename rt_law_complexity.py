@@ -122,26 +122,6 @@ def get_text_complexity(p):
         return morpho_complexity(Text(text).get.word_texts.lemmas.as_dict['lemmas'])
 
 
-def get_text_complexity_old(p, ns):
-    ptext = []
-    tava = p.findall(".//%stavatekst" % ns)
-    for tava_text in tava:
-
-        if tava_text.text is None:
-            b = tava_text.find(".//%sb" % ns)
-            if b is not None:
-                text = Text(b.text)
-            else:
-                for j in tava_text.iter():
-                    print((j.tag if j.tag is not None else "") + ">" + (j.text if j.text is not None else ""))
-                text = Text("")
-        else:
-            text = Text(tava_text.text)
-
-        ptext += text.get.word_texts.lemmas.as_dict['lemmas']
-    return morpho_complexity(ptext) if len(ptext) > 0 else 0
-
-
 def extract_paragraphs(ns, ps):
     edges = dict()
     lc = dict()
