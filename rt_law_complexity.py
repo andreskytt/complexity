@@ -11,6 +11,7 @@ import datetime
 import multiprocessing
 from time import sleep
 import traceback
+import numpy
 
 # Print iterations progress
 start = 0
@@ -108,7 +109,7 @@ def morpho_complexity(lemmas):
 
     enc = huffman.Encoder()
     enc.encode(s_lemmas)
-    return len(enc.array_codes) / len(lemmas) if s_lemmas > "" else 0
+    return 1- len(enc.array_codes) / len(lemmas) if s_lemmas > "" else 0
 
 
 def get_text_complexity(p):
@@ -210,9 +211,11 @@ def extract_paragraphs(ns, ps):
             # Empty paragraphs are entirely valid
             lc[p_id] = morpho_complexity(ptext) if len(ptext) > 0 else 0
     except Exception as e:
-        traceback.print_exc()
-
-    return edges, lc
+        print("Exception in exctract paragraphs")
+        print(e.args)
+        print(e)
+    finally:
+        return edges, lc
 
 
 def extract_from_html(hk, id_element):
@@ -229,58 +232,82 @@ def extract_from_html(hk, id_element):
     return single
 
 
+def get_act_name(root, ns):
+    n = root.find('.//{0}aktinimi/{0}nimi/{0}pealkiri'.format(ns))
+    return n.text if n is not None else ""
+
+
 def calc_complexity(fname):
-    # print(fname)
-    root = etree.parse(fname).getroot()
-    ns = namespace(root)
-    # Working on the text one paragraph at a time
-    ps = root.findall('.//{0}paragrahv'.format(ns))
+    try:
+        #print(fname)
+        root = etree.parse(fname).getroot()
+        ns = namespace(root)
+        # Working on the text one paragraph at a time
+        ps = root.findall('.//{0}paragrahv'.format(ns))
 
-    if len(ps) > 0:
-        edges, lc = extract_paragraphs(ns, ps)
-    else:
-        # Apparently we did not find any paragraphs
-        html = root.findall(".//%sHTMLKonteiner" % ns)
-        edges = dict()
-        if len(html) > 0:
-            lc = extract_from_html(html, root.find(".//%sglobaalID" % ns))
+        if len(ps) > 0:
+            edges, lc = extract_paragraphs(ns, ps)
         else:
-            # print(fname)
-            lc = dict()
-            gid = root.find(".//%sglobaalID" % ns)
-            if gid is not None:
-                lc[gid.text] = get_text_complexity(root)
+            # Apparently we did not find any paragraphs
+            html = root.findall(".//%sHTMLKonteiner" % ns)
+            edges = dict()
+            if len(html) > 0:
+                lc = extract_from_html(html, root.find(".//%sglobaalID" % ns))
             else:
-                print("GlobaalID not found in " + fname)
+                # print(fname)
+                lc = dict()
+                gid = root.find(".//%sglobaalID" % ns)
+                if gid is not None:
+                    lc[gid.text] = get_text_complexity(root)
 
-    # Write out the adjacency matrix
+                else:
+                    print("GlobaalID not found in " + fname)
 
-    header = ""
-    f_match = re.match("((\d+)\.(\d+)\.(\d+)-(.*))\.xml", fname)
-    key = f_match.group(1)
-    f = open("l-" + key + ".txt", "w")
+        # Generate the numpy matrix
+        matrix = []
 
-    for a in sorted(lc.keys()):
-        header = header + '\t' + a
-    f.write("%s\n" % header)
+        s_keys = sorted(lc.keys())
+        for a in s_keys:
+            matrix.append([(edges.get(a, dict())).get(b, 0) * max(lc[a], lc[b]) for b in s_keys])
 
-    for a in sorted(lc.keys()):
-        line = a
-        for k in sorted(lc.keys()):
-            c = 1 - max(lc[a], lc[k])
-            s = "0"
-            if a in edges.keys():
-                if k in edges[a].keys():
-                    s = str(edges[a][k] * c)
-            line = line + '\t' + s
-        f.write("%s\n" % line)
-    f.close()
+        matrix = numpy.array(matrix)
+        numpy.fill_diagonal(matrix, 1)
 
-    f = open("lc-" + key + ".txt", "w")
-    for a in sorted(lc.keys()):
-        f.write(a + "\t%f\n" % lc[a])
-    f.close()
-    return fname
+        complexity = sum(numpy.linalg.eigvals(matrix))
+
+        # Write out the adjacency matrix
+
+        header = ""
+        f_match = re.match("((\d+)\.(\d+)\.(\d+)-(.*))\.xml", fname)
+        key = f_match.group(1)
+        f = open("l-" + key + ".txt", "w")
+
+        for a in s_keys:
+            header = header + '\t' + a
+        f.write("%s\n" % header)
+
+        for a in s_keys:
+            line = a
+            for k in s_keys:
+                c = 1 - max(lc[a], lc[k])
+                s = "0"
+                if a in edges.keys():
+                    if k in edges[a].keys():
+                        s = str(edges[a][k] * c)
+                line = line + '\t' + s
+            f.write("%s\n" % line)
+        f.close()
+
+        f = open("lc-" + key + ".txt", "w")
+        for a in s_keys:
+            f.write(a + "\t%f\n" % lc[a])
+        f.close()
+
+        return fname, complexity, get_act_name(root, ns)
+    except Exception as inst:
+        print("Exception in complexity calculation")
+        print(inst.args)
+        print(inst)
 
 
 r = re.compile("(\d+)\.(\d+)\.(\d+)-(.*)\.xml", re.I)
@@ -290,21 +317,22 @@ TASKS = []
 results = []
 
 i = 0
-files = set()
-for filename in os.listdir('.'):
-    m = re.match(r, filename)
-    if m:
-        #        calc_complexity(filename)
-        files.add(filename)
 
+act_files = [f for f in os.listdir('.') if re.match(r, f)]
 pool = multiprocessing.Pool(PROCESSES)
 
-r = [pool.apply_async(calc_complexity, (f,), callback=results.append) for f in files]
+r = [pool.apply_async(calc_complexity, (f,), callback=results.append) for f in act_files]
+# [calc_complexity(f) for f in act_files]
 
-while len(results) < len(files):
-    print_progress(len(results), len(files), prefix='Progress:', suffix='Complete', bar_length=50)
+while len(results) < len(act_files):
+    print_progress(len(results), len(act_files), prefix='Progress:', suffix='Complete', bar_length=50)
     sleep(1)
-    if len(results) / len(files) >= .99:
-        print([d for d in files if d not in results])
+    if len(results) / len(act_files) >= .99:
+        print([d for d in act_files if d not in results])
         pass
-print("")
+
+f = open("complexities.txt", "w")
+for fname, c, name in results:
+    f.write("%s\t%f\t%s\n" % (fname, c, name))
+
+f.close()
