@@ -80,14 +80,10 @@ def get_id(p, ns):
     """
     h = p.find(".//%skuvatavNr" % ns).text
     id_r = re.match(r'(\d+)(?:(?:<sup>(\d+)</sup>)*)', h[2:len(h) - 1].strip())
-    try:
-        if id_r.group(2):
-            return id_r.group(1) + 's' + id_r.group(2)
-        else:
-            return id_r.group(1)
-
-    except IndexError:
-        traceback.print_exc()
+    if id_r.group(2):
+        return id_r.group(1) + 's' + id_r.group(2)
+    else:
+        return id_r.group(1)
 
 
 def morpho_complexity(lemmas):
@@ -99,17 +95,17 @@ def morpho_complexity(lemmas):
     :return: complexity of the string or 0 if the incoming array was empty
     """
     our_lemmas = dict()
-    c = 32
+    subs = 32
     s_lemmas = ""
     for l in lemmas:
         if l not in our_lemmas.keys():
-            our_lemmas[l] = c
-            c += 1
+            our_lemmas[l] = subs
+            subs += 1
         s_lemmas += chr(our_lemmas[l])
 
     enc = huffman.Encoder()
     enc.encode(s_lemmas)
-    return 1- len(enc.array_codes) / len(lemmas) if s_lemmas > "" else 0
+    return 1 - len(enc.array_codes) / len(lemmas) if s_lemmas > "" else 0
 
 
 def get_text_complexity(p):
@@ -211,8 +207,7 @@ def extract_paragraphs(ns, ps):
             # Empty paragraphs are entirely valid
             lc[p_id] = morpho_complexity(ptext) if len(ptext) > 0 else 0
     except Exception as e:
-        print("Exception in exctract paragraphs")
-        print(e.args)
+        print("Exception in extract paragraphs with %s" % fname)
         print(e)
     finally:
         return edges, lc
@@ -226,9 +221,9 @@ def extract_from_html(hk, id_element):
         s += " " + re.sub("<[^<]+>", "", h.text)
 
     lemmas = Text(s).get.word_texts.lemmas.as_dict['lemmas']
-    c = morpho_complexity(lemmas)
+    complexity = morpho_complexity(lemmas)
     this_id = "html_" + id_element.text
-    single[this_id] = c
+    single[this_id] = complexity
     return single
 
 
@@ -239,7 +234,7 @@ def get_act_name(root, ns):
 
 def calc_complexity(fname):
     try:
-        #print(fname)
+        # print(fname)
         root = etree.parse(fname).getroot()
         ns = namespace(root)
         # Working on the text one paragraph at a time
@@ -254,7 +249,6 @@ def calc_complexity(fname):
             if len(html) > 0:
                 lc = extract_from_html(html, root.find(".//%sglobaalID" % ns))
             else:
-                # print(fname)
                 lc = dict()
                 gid = root.find(".//%sglobaalID" % ns)
                 if gid is not None:
@@ -271,46 +265,20 @@ def calc_complexity(fname):
             matrix.append([(edges.get(a, dict())).get(b, 0) * max(lc[a], lc[b]) for b in s_keys])
 
         matrix = numpy.array(matrix)
+
+        # Set diagonal to 1 so it becomes a DSM. Eigenvalues will be 0 otherwise
         numpy.fill_diagonal(matrix, 1)
+        matrix = matrix + matrix.T
 
         complexity = sum(numpy.linalg.eigvals(matrix))
 
-        # Write out the adjacency matrix
-
-        header = ""
-        f_match = re.match("((\d+)\.(\d+)\.(\d+)-(.*))\.xml", fname)
-        key = f_match.group(1)
-        f = open("l-" + key + ".txt", "w")
-
-        for a in s_keys:
-            header = header + '\t' + a
-        f.write("%s\n" % header)
-
-        for a in s_keys:
-            line = a
-            for k in s_keys:
-                c = 1 - max(lc[a], lc[k])
-                s = "0"
-                if a in edges.keys():
-                    if k in edges[a].keys():
-                        s = str(edges[a][k] * c)
-                line = line + '\t' + s
-            f.write("%s\n" % line)
-        f.close()
-
-        f = open("lc-" + key + ".txt", "w")
-        for a in s_keys:
-            f.write(a + "\t%f\n" % lc[a])
-        f.close()
-
         return fname, complexity, get_act_name(root, ns)
-    except Exception as inst:
-        print("Exception in complexity calculation")
-        print(inst.args)
-        print(inst)
+    except Exception as e:
+        print("Exception in complexity calculation with %s" % fname)
+        print(e)
 
 
-r = re.compile("(\d+)\.(\d+)\.(\d+)-(.*)\.xml", re.I)
+file_re = re.compile("(\d+)\.(\d+)\.(\d+)-(.*)\.xml$", re.I)
 d = dict()
 PROCESSES = 8
 TASKS = []
@@ -318,21 +286,19 @@ results = []
 
 i = 0
 
-act_files = [f for f in os.listdir('.') if re.match(r, f)]
+act_files = [f for f in os.listdir('.') if re.match(file_re, f)]
 pool = multiprocessing.Pool(PROCESSES)
 
 r = [pool.apply_async(calc_complexity, (f,), callback=results.append) for f in act_files]
-# [calc_complexity(f) for f in act_files]
 
 while len(results) < len(act_files):
     print_progress(len(results), len(act_files), prefix='Progress:', suffix='Complete', bar_length=50)
     sleep(1)
-    if len(results) / len(act_files) >= .99:
-        print([d for d in act_files if d not in results])
-        pass
 
+print("")
 f = open("complexities.txt", "w")
 for fname, c, name in results:
-    f.write("%s\t%f\t%s\n" % (fname, c, name))
+    m = re.match(file_re, fname)
+    f.write("%s\t%s\t%s\t%f\t%s\n" % (fname, m.group(2), m.group(3), c.real, name))
 
 f.close()
