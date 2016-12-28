@@ -264,23 +264,27 @@ def calc_complexity(fname):
         for a in s_keys:
             matrix.append([(edges.get(a, dict())).get(b, 0) * max(lc[a], lc[b]) for b in s_keys])
 
+        c1 = sum(lc.values())
+        c2 = sum(list(map(lambda x: sum(x), matrix)))
+
         matrix = numpy.array(matrix)
 
         # Set diagonal to 1 so it becomes a DSM. Eigenvalues will be 0 otherwise
         numpy.fill_diagonal(matrix, 1)
         matrix = matrix + matrix.T
+        matrix[matrix > 1] = 1
 
-        complexity = sum(numpy.linalg.eigvals(matrix))
+        c3 = sum(numpy.linalg.eigvals(matrix))
 
-        return fname, complexity, get_act_name(root, ns)
+        complexity = c1 + c2*c3
+        return fname, complexity, c1, c2, c3, get_act_name(root, ns)
     except Exception as e:
         print("Exception in complexity calculation with %s" % fname)
         print(e)
 
-
 file_re = re.compile("(\d+)\.(\d+)\.(\d+)-(.*)\.xml$", re.I)
 d = dict()
-PROCESSES = 8
+PROCESSES = 3
 TASKS = []
 results = []
 
@@ -290,15 +294,16 @@ act_files = [f for f in os.listdir('.') if re.match(file_re, f)]
 pool = multiprocessing.Pool(PROCESSES)
 
 r = [pool.apply_async(calc_complexity, (f,), callback=results.append) for f in act_files]
-
+#[calc_complexity(f) for f in act_files]
+# quit()
 while len(results) < len(act_files):
     print_progress(len(results), len(act_files), prefix='Progress:', suffix='Complete', bar_length=50)
     sleep(1)
 
 print("")
 f = open("complexities.txt", "w")
-for fname, c, name in results:
+for fname, complexity, c1, c2, c3, name in results:
     m = re.match(file_re, fname)
-    f.write("%s\t%s\t%s\t%f\t%s\n" % (fname, m.group(2), m.group(3), c.real, name))
+    f.write("%s\t%s\t%s\t%s\t%f\t%f\t%f\t%f\n" % (fname, m.group(2), m.group(3), name, c1, c2, c3.real, complexity.real))
 
 f.close()
