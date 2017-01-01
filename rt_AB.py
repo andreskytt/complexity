@@ -6,6 +6,7 @@ import os
 import multiprocessing
 import sys
 import datetime
+import numpy
 
 start = 0
 
@@ -35,11 +36,21 @@ def print_progress(iteration, total, prefix='', suffix='', decimals=1, bar_lengt
         sys.stdout.write('\n')
     sys.stdout.flush()
 
+law_complexities = dict()
+
 
 def get_complexity(fname):
-    cr = etree.parse(fname).getroot()
-    ns = namespace(cr)
-    return len(cr.findall('.//{0}sisuTekst'.format(ns)))
+    global law_complexities
+
+    if len(law_complexities.values()) == 0:
+        with open("complexities.txt") as cf:
+            ls = cf.readlines()
+
+        for line in ls:
+            cs = line.split("\t")
+            law_complexities[cs[0]] = float(cs[7])
+
+    return law_complexities.get(fname, 0)
 
 
 def namespace(element):
@@ -47,11 +58,11 @@ def namespace(element):
     return ns_m.group(0) if m else ''
 
 
-def get_match(fname):
+def get_match(fname, ta):
     m_r = etree.parse(fname).getroot()
     ns = namespace(m_r)
     t = m_r.find('.//{0}pealkiri'.format(ns)).text
-    return re.compile(t + '\w*?', re.I)
+    return ta, re.compile(t + '\w*?', re.I)
 
 
 def calculate(task):
@@ -86,19 +97,19 @@ l = os.listdir('.')
 i = 0
 print('Extract titles and complexities')
 for filename in l:
-    print_progress(i, len(l), prefix='Progress:', suffix='Complete', barLength=50)
+    print_progress(i, len(l), prefix='Progress:', suffix='Complete', bar_length=50)
     i += 1
 
     m = re.match(r, filename)
     if m:
         k = m.group(2) + "-" + m.group(3)
-        if not k in d:
+        if k not in d:
             d[k] = []
             bCount[k] = dict() 
 
         bCount[k][m.group(4)] = get_complexity(filename)
 
-        d[k].append(get_match(filename))
+        d[k].append(get_match(filename, m.group(4)))
 
 print('\nTitle extraction done')
 
@@ -107,7 +118,7 @@ print('Starting to find links')
 
 i = 0
 for filename in os.listdir('.'):
-    print_progress(i, len(l), prefix ='Progress:', suffix ='Complete', barLength = 50)
+    print_progress(i, len(l), prefix='Progress:', suffix='Complete', bar_length=50)
     i += 1
 
     m = re.match(r, filename)
@@ -124,22 +135,46 @@ for filename in os.listdir('.'):
 
 print('\nLinks done')
 
+# for mk in matrices:
+#     m = matrices[mk]
+#     header = ""
+#     f = open("x-" + mk + ".txt", "w")
+#     for k in sorted(m.keys()):
+#         header = header + "\t" + k
+#     f.write("%s\n" % header)
+#
+#     for a in sorted(m.keys()):
+#         line = a
+#         for k in sorted(m.keys()):
+#             bc = max(bCount[mk][a], bCount[mk][k])
+#             if bc == 0:
+#                 print("%s %s %s" % (mk, a, k))
+#             s = str(m[a][k]/bc) if bc > 0 else "0"
+#             line = line + "\t" + s
+#         f.write("%s\n" % line)
+#
+#     f.close()
+#
+f = open("q_complexities.txt", "w")
 for mk in matrices:
     m = matrices[mk]
-    header = ""
-    f = open("x-" + mk + ".txt", "w")
-    for k in sorted(m.keys()):
-        header = header + "\t" + k 
-    f.write("%s\n" % header)
+    matrix = []
+    s_keys = sorted(m.keys())
+    for a in s_keys:
+        matrix.append([m[a][b] / max(bCount[mk][a], bCount[mk][b]) for b in s_keys])
 
-    for a in sorted(m.keys()):
-        line = a
-        for k in sorted(m.keys()):
-            bc = max(bCount[mk][a], bCount[mk][k])
-            if bc == 0:
-                print("%s %s %s" % (mk, a, k))
-            s = str(m[a][k]/bc) if bc > 0 else "0"
-            line = line + "\t" + s
-        f.write("%s\n" % line)
+    c1 = sum(bCount[mk].values())
+    c2 = sum(list(map(lambda x: sum(x), matrix)))
 
-    f.close()
+    matrix = numpy.array(matrix)
+
+    numpy.fill_diagonal(matrix, 1)
+    matrix = matrix + matrix.T
+    matrix[matrix > 1] = 1
+
+    c3 = sum(numpy.linalg.eigvals(matrix))
+    complexity = c1 + c2 * c3
+
+    mks = mk.split("-")
+    f.write("%s\t%s\t%f\t%f\t%f\t%f\n" % (mks[0], mks[1], c1, c2, c3.real, complexity.real))
+f.close()
