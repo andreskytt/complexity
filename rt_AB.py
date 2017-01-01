@@ -55,7 +55,7 @@ def get_complexity(fname):
 
 def namespace(element):
     ns_m = re.match('\{.*\}', element.tag)
-    return ns_m.group(0) if m else ''
+    return ns_m.group(0) if ns_m else ''
 
 
 def get_match(fname, ta):
@@ -135,33 +135,13 @@ for filename in os.listdir('.'):
 
 print('\nLinks done')
 
-# for mk in matrices:
-#     m = matrices[mk]
-#     header = ""
-#     f = open("x-" + mk + ".txt", "w")
-#     for k in sorted(m.keys()):
-#         header = header + "\t" + k
-#     f.write("%s\n" % header)
-#
-#     for a in sorted(m.keys()):
-#         line = a
-#         for k in sorted(m.keys()):
-#             bc = max(bCount[mk][a], bCount[mk][k])
-#             if bc == 0:
-#                 print("%s %s %s" % (mk, a, k))
-#             s = str(m[a][k]/bc) if bc > 0 else "0"
-#             line = line + "\t" + s
-#         f.write("%s\n" % line)
-#
-#     f.close()
-#
 f = open("q_complexities.txt", "w")
 for mk in matrices:
     m = matrices[mk]
     matrix = []
     s_keys = sorted(m.keys())
     for a in s_keys:
-        matrix.append([m[a][b] / max(bCount[mk][a], bCount[mk][b]) for b in s_keys])
+        matrix.append([m[a][b] / max(bCount[mk][a], bCount[mk][b]) if a != b else 0 for b in s_keys])
 
     c1 = sum(bCount[mk].values())
     c2 = sum(list(map(lambda x: sum(x), matrix)))
