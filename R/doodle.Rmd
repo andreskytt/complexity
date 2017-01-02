@@ -1,0 +1,146 @@
+---
+title: "Complexity Doodle"
+author: "Andres Kütt"
+date: "12/30/2016"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(lubridate)
+library(scales)
+library(ggplot2)
+library(tidyr)
+
+library(readr)
+complexities <- read_delim("~/work/complexity/data/complexities.txt", 
+                           "\t", escape_double = FALSE, col_names = FALSE, 
+                           col_types = cols(X1 = col_character()), 
+                           trim_ws = TRUE)
+colnames(complexities) <- c("lbl","month", "year", "name", "C1", "C2", "C3","C")
+
+complexities$date <- as.Date(ymd(paste(complexities$year, complexities$month, 1)))
+
+qc <- read_delim("~/work/complexity/data/q_complexities.txt", 
+                           "\t", escape_double = FALSE, col_names = FALSE, 
+                           col_types = cols(X1 = col_character()), 
+                           trim_ws = TRUE)
+colnames(qc) <- c("month", "year", "C1", "C2", "C3","C")
+
+qc$date <- as.Date(ymd(paste(qc$year, qc$month, 1)))
+
+
+```
+
+## The main thing
+
+
+```{r main_chart, echo=TRUE, message=FALSE, warning=FALSE}
+p <- ggplot(data = qc, aes(x=date, y=C, group = 1)) +
+  geom_line() + 
+  geom_smooth() + 
+  theme_minimal() +
+  scale_y_continuous("Keerukus") +
+  scale_x_date(date_breaks = "6 months", labels = date_format("%m-%Y"), date_minor_breaks = "1 months", name ="Kuud")+
+  theme(axis.text.x = element_text(angle=90))
+p
+```
+
+### The FB post:
+
+So here it is. How the complexity of Estonian laws has evolved since Q2 2002. I took all the laws in force at 1st of a given quarter, calculated complexity of each law using a formula by prof. de Weck (text complexity was estimated using a morphological method) and then calculated the complexity of the entire set. These are not the final results but the first ones I dare share. Observations:
+
+* It is a strong upwards trend but not a stable one. Not an exponent either, which is good
+* Things like EU accession seem to have very little effect although I must enquiry to specialists about the apparent plateau 2008-2011
+* It fluctuates quite a bit more than I was expecting. There are a few quite significant drops
+
+### Hypothesis 
+#### On the "plateau"
+* Economic crysis (several objections)
+
+#### On the drops
+* The bugfix hypothesis. People re-write laws, forget to put in references and add those later
+
+### What to do
+* Plot all three components on the same figure after converting to 0-1 scale. Differences in growth?
+* Show that the individual laws separately get more complex much slower than the set. Thus the need to look at the stucture of the entire thing
+* Calculate linear trends of all individual laws (min/max). Do groups emerge? Do scatter plot with min on one and max on other scale
+
+## Individual laws
+```{r law_chart, echo=TRUE, message=FALSE, warning=FALSE}
+ggplot(data=complexities, aes(x=complexities$date, y=complexities$C)) + 
+  geom_line(aes(colour=complexities$name)) + theme(legend.position="none") + scale_y_log10()
+```
+
+### Changes in complexity
+
+```{r changes, message=FALSE, warning=FALSE, echo=TRUE}
+minmaks <- complexities %>% group_by(name) %>% summarise(i = min(C), x = max(C))
+minmaks$g <- minmaks$i/minmaks$x
+minmaks$g <- minmaks$i/minmaks$x
+
+ggplot(data = minmaks) + 
+  aes(g) + 
+  geom_histogram(aes(y=100*..count../sum(..count..))) + 
+  theme_minimal()
+
+```
+
+### Descriptive stats
+
+```{r count, message=FALSE, warning=FALSE, echo=TRUE}
+mitu <- complexities %>% group_by(date) %>% summarise(mitu = n())
+mitu %>% ggplot(aes(x = date, y=mitu)) + 
+  geom_line() +
+  scale_x_date(date_breaks = "6 months", labels = date_format("%m-%Y"), date_minor_breaks = "1 months", name ="Kuu") + 
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle=90))
+```
+
+### Components of complexity over time
+```{r nc, message=FALSE, warning=FALSE, echo=TRUE}
+qc$nc1 <- (qc$C1-min(qc$C1))/max(qc$C1)
+qc$nc2 <- (qc$C2-min(qc$C2))/max(qc$C2)
+qc$nc3 <- (qc$C3-min(qc$C3))/max(qc$C3)
+qc$nc <- (qc$C-min(qc$C))/max(qc$C)
+
+qc %>% 
+  select(nc1, nc2, nc3, nc, date) %>% 
+  gather(type,  value=cmpl, nc1, nc2, nc3, nc, -date) -> nqc
+nqc %>%  ggplot(aes(x=date,y=nqc$cmpl, colour = nqc$type)) +
+  geom_line()
+
+```
+
+## Narrative
+1. Background and research question
+1. Scope of work
+1. Description of the dataset
+1. Key result (upwards trend)
+1. Subquestions
+    1. Individual components of complexity
+    1. Changes in law complexities
+
+## Random notes
+Jaanus Tehver FBs:
+Päris huvitav on vaadata ka uute terviktekstide vs muutmise seaduste vastuvõtmiste arvu Riigikogu koosseisude kaupa:
+
+Terviktekstid:
+VII (1992-1995) 169 
+VIII (1995-1999) 155 
+IX (1999-2003) 150 
+X (2003-2007) 94
+XI (2007-2011) 66 
+XII (2011-2015) 38
+
+Muutmisseadused: 
+VII (1992-1995) 139 
+VIII (1995-1999) 345 
+IX (1999-2003) 490 
+X (2003-2007) 414
+XI (2007-2011) 408
+XII (2011-2015) 367
+"See statistika näitab, et vastuvõetud seaduste (nii uute terviktekstide kui muudatusseaduste) arv vähenes eelmise perioodiga võrreldes kõige tuntavamalt vahetult pärast Eesti liitumist EL-iga. Mis toimus 2008-2011 seaduste keerukusega, siit muidugi ei selgu..."
+
+Tanel Pärnamaa: http://andmeteadus.github.io/2015/2015/05/19/11-seadused/ loetavusindeks
