@@ -10,7 +10,7 @@ import sys
 import datetime
 import multiprocessing
 from time import sleep
-import traceback
+import lzma
 import numpy
 
 # Print iterations progress
@@ -103,9 +103,9 @@ def morpho_complexity(lemmas):
             subs += 1
         s_lemmas += chr(our_lemmas[l])
 
-    enc = huffman.Encoder()
-    enc.encode(s_lemmas)
-    return 1 - len(enc.array_codes) / len(lemmas) if s_lemmas > "" else 0
+    l = len(lzma.compress(s_lemmas.encode('UTF-8'), format=lzma.FORMAT_RAW, filters=[{"id": lzma.FILTER_LZMA2}]))
+
+    return l/len(lemmas) if s_lemmas > "" else 0
 
 
 def get_text_complexity(p):
@@ -218,7 +218,7 @@ def extract_from_html(hk, id_element):
 
     s = ""
     for h in hk:
-        s += " " + re.sub("<[^<]+>", "", h.text)
+        s += " " + re.sub("<[^<]+>", " ", h.text)
 
     lemmas = Text(s).get.word_texts.lemmas.as_dict['lemmas']
     complexity = morpho_complexity(lemmas)
@@ -276,15 +276,15 @@ def calc_complexity(fname):
 
         c3 = sum(numpy.linalg.eigvals(matrix))
 
-        complexity = c1 + c2*c3
-        return fname, complexity, c1, c2, c3, get_act_name(root, ns)
+        cpl = c1 + c2*c3/len(lc.keys())
+        return fname, cpl, c1, c2, c3, get_act_name(root, ns)
     except Exception as e:
         print("Exception in complexity calculation with %s" % fname)
         print(e)
 
 file_re = re.compile("(\d+)\.(\d+)\.(\d+)-(.*)\.xml$", re.I)
 d = dict()
-PROCESSES = 3
+PROCESSES = 6
 TASKS = []
 results = []
 
@@ -294,8 +294,7 @@ act_files = [f for f in os.listdir('.') if re.match(file_re, f)]
 pool = multiprocessing.Pool(PROCESSES)
 
 r = [pool.apply_async(calc_complexity, (f,), callback=results.append) for f in act_files]
-#[calc_complexity(f) for f in act_files]
-# quit()
+
 while len(results) < len(act_files):
     print_progress(len(results), len(act_files), prefix='Progress:', suffix='Complete', bar_length=50)
     sleep(1)

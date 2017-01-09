@@ -153,7 +153,7 @@ for mk in matrices:
     matrix[matrix > 1] = 1
 
     c3 = sum(numpy.linalg.eigvals(matrix))
-    complexity = c1 + c2 * c3
+    complexity = c1 + c2 * c3/len(bCount[mk].values())
 
     mks = mk.split("-")
     f.write("%s\t%s\t%f\t%f\t%f\t%f\n" % (mks[0], mks[1], c1, c2, c3.real, complexity.real))
