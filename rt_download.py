@@ -3,6 +3,7 @@
 from bs4 import BeautifulSoup
 import urllib3
 import certifi
+from time import sleep
 
 base_url = ('https://www.riigiteataja.ee/tervikteksti_tulemused.html?'
             'nrOtsing=tapne&riigikoguOtsused=false&valislepingud=false&valitsuseKorraldused=false&'
@@ -10,6 +11,8 @@ base_url = ('https://www.riigiteataja.ee/tervikteksti_tulemused.html?'
             'kasvav=true&kehtivusKuupaev=')
 act_base_url = 'https://www.riigiteataja.ee/akt/'
 data_dir = "data/"
+GRACE_TIME_S = 2
+
 
 def download(act_date, fname):
     url = act_base_url + fname + '.xml' 
@@ -21,6 +24,7 @@ def download(act_date, fname):
     f.close()
 
     print(fn + " written")
+    sleep(GRACE_TIME_S)
 
 
 def get_acts(act_date):
@@ -40,7 +44,7 @@ def get_acts(act_date):
 http = urllib3.PoolManager(cert_reqs='CERT_REQUIRED', ca_certs=certifi.where())
 urllib3.disable_warnings()
 
-for y in range(2002, 2017):
+for y in range(2004, 2017):
     for m in (1, 4, 7, 10):
         d = '1.' + str(m) + '.' + str(y)
         get_acts(d)
